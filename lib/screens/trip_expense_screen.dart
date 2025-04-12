@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_memotrip/models/trip.dart';
 import 'package:flutter_application_memotrip/models/expense.dart';
 import 'package:flutter_application_memotrip/screens/expense_statistics_screen.dart';
+import 'package:flutter_application_memotrip/services/expense_service.dart';
 import 'package:intl/intl.dart';
 
 class TripExpenseScreen extends StatefulWidget {
@@ -18,38 +19,56 @@ class TripExpenseScreen extends StatefulWidget {
 }
 
 class _TripExpenseScreenState extends State<TripExpenseScreen> {
-  late TripBudget _tripBudget;
-  late List<Expense> _expenses;
+  final ExpenseService _expenseService = ExpenseService();
+  
+  TripBudget? _tripBudget;
+  List<Expense> _expenses = [];
+  List<ExpenseCategory> _categories = [];
+  bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-    // 初始化旅行预算和消费数据
-    _tripBudget = TripBudget(
-      totalExpense: 25630,
-      budget: 35000,
-      remaining: 9370,
-    );
-
-    // 初始化消费记录
-    _expenses = [
-      Expense(
-        id: '1',
-        title: '寿司午餐',
-        amount: 3200,
-        date: DateTime(2024, 2, 15, 13, 20),
-        category: '餐饮',
-        icon: 'utensils',
-      ),
-      Expense(
-        id: '2',
-        title: '地铁票',
-        amount: 500,
-        date: DateTime(2024, 2, 15, 10, 30),
-        category: '交通',
-        icon: 'subway',
-      ),
-    ];
+    _loadExpenseData();
+  }
+  
+  // 加载支出数据
+  Future<void> _loadExpenseData() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+      
+      // 获取旅行预算信息
+      final budget = await _expenseService.getTripBudget(widget.trip.id);
+      
+      // 获取支出列表
+      final expenses = await _expenseService.getExpensesByTripId(widget.trip.id);
+      
+      // 获取支出类别
+      final categories = await _expenseService.getExpenseCategories();
+      
+      if (mounted) {
+        setState(() {
+          _tripBudget = budget;
+          _expenses = expenses;
+          _categories = categories;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = '加载支出数据失败: $e';
+        });
+      }
+      print('加载支出数据失败: $e');
+    }
   }
 
   @override
@@ -135,108 +154,251 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                   ),
                 ),
 
-                // 总支出卡片
-                Container(
-                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3B82F6),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 总支出标签
-                      const Opacity(
-                        opacity: 0.8,
-                        child: Text(
-                          '总支出',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
-                        ),
+                if (_isLoading)
+                  // 加载指示器
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('加载支出数据...'),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      // 总支出金额
-                      Text(
-                        '¥ ${_tripBudget.totalExpense.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontSize: 27,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // 预算和剩余
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    ),
+                  )
+                else if (_hasError)
+                  // 错误提示
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // 预算
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Opacity(
-                                opacity: 0.8,
-                                child: Text(
-                                  '预算',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '¥${_tripBudget.budget.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.red,
+                            size: 48,
                           ),
-                          // 剩余
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Opacity(
-                                opacity: 0.8,
-                                child: Text(
-                                  '剩余',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '¥${_tripBudget.remaining.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 16),
+                          Text(
+                            _errorMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _loadExpenseData,
+                            child: const Text('重试'),
                           ),
                         ],
                       ),
-                    ],
+                    ),
+                  )
+                else ...[
+                  // 总支出卡片
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 总支出标签
+                        const Opacity(
+                          opacity: 0.8,
+                          child: Text(
+                            '总支出',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // 总支出金额
+                        Text(
+                          _tripBudget!.formattedTotalExpense,
+                          style: const TextStyle(
+                            fontSize: 27,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // 预算和剩余
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // 预算
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Opacity(
+                                  opacity: 0.8,
+                                  child: Text(
+                                    '预算',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  _tripBudget!.formattedBudget,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            // 剩余
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Opacity(
+                                  opacity: 0.8,
+                                  child: Text(
+                                    '剩余',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  _tripBudget!.formattedRemaining,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        
+                        // 预算进度条
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: _tripBudget!.usagePercentage,
+                            backgroundColor: Colors.white.withOpacity(0.3),
+                            color: Colors.white,
+                            minHeight: 4,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                // 消费记录列表
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _expenses.length,
-                    itemBuilder: (context, index) {
-                      final expense = _expenses[index];
-                      return _buildExpenseItem(expense);
-                    },
-                  ),
-                ),
+                  // 支出记录列表
+                  _expenses.isEmpty
+                      ? Expanded(
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.account_balance_wallet_outlined,
+                                  color: Colors.grey,
+                                  size: 48,
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  '暂无支出记录',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '点击 + 添加您的第一笔支出',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : Expanded(
+                          child: RefreshIndicator(
+                            onRefresh: _loadExpenseData,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _expenses.length,
+                              itemBuilder: (context, index) {
+                                final expense = _expenses[index];
+                                return Dismissible(
+                                  key: Key(expense.id),
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20.0),
+                                    color: Colors.red,
+                                    child: const Icon(
+                                      Icons.delete,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  direction: DismissDirection.endToStart,
+                                  confirmDismiss: (direction) async {
+                                    return await showDialog(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: const Text('确认删除'),
+                                        content: const Text('确定要删除这条支出记录吗？'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(context).pop(false),
+                                            child: const Text('取消'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => Navigator.of(context).pop(true),
+                                            child: const Text('删除'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                  onDismissed: (direction) async {
+                                    try {
+                                      // 删除支出
+                                      await _expenseService.deleteExpense(expense.id);
+                                      // 刷新预算信息
+                                      final newBudget = await _expenseService.getTripBudget(widget.trip.id);
+                                      
+                                      setState(() {
+                                        _expenses.removeAt(index);
+                                        _tripBudget = newBudget;
+                                      });
+                                      
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('支出已删除')),
+                                      );
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('删除失败: $e')),
+                                      );
+                                    }
+                                  },
+                                  child: _buildExpenseItem(expense),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                ],
               ],
             ),
 
@@ -284,21 +446,49 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     Color iconColor;
     IconData iconData;
 
-    switch (expense.category) {
-      case '餐饮':
-        iconBgColor = const Color(0xFFDBEAFE); // 蓝色背景
-        iconColor = const Color(0xFF3B82F6); // 蓝色图标
-        iconData = Icons.restaurant;
-        break;
-      case '交通':
-        iconBgColor = const Color(0xFFF3E8FF); // 紫色背景
-        iconColor = const Color(0xFFA855F7); // 紫色图标
-        iconData = Icons.train;
-        break;
-      default:
-        iconBgColor = const Color(0xFFDBEAFE);
-        iconColor = const Color(0xFF3B82F6);
-        iconData = Icons.receipt;
+    // 默认颜色和图标
+    iconBgColor = const Color(0xFFDBEAFE);
+    iconColor = const Color(0xFF3B82F6);
+    iconData = Icons.receipt;
+    
+    // 如果有颜色代码，尝试解析它
+    if (expense.colorCode != null) {
+      try {
+        final colorInt = int.parse(expense.colorCode!.replaceAll('#', '0xff'));
+        iconBgColor = Color(colorInt).withOpacity(0.1);
+        iconColor = Color(colorInt);
+      } catch (e) {
+        print('颜色代码解析失败: ${expense.colorCode}');
+      }
+    }
+    
+    // 根据图标名称选择图标
+    if (expense.iconName != null) {
+      switch (expense.iconName) {
+        case 'restaurant':
+        case 'food':
+          iconData = Icons.restaurant;
+          break;
+        case 'hotel':
+        case 'lodging':
+          iconData = Icons.hotel;
+          break;
+        case 'train':
+        case 'transportation':
+        case 'directions_bus':
+          iconData = Icons.directions_bus;
+          break;
+        case 'shopping':
+        case 'shopping_bag':
+          iconData = Icons.shopping_bag;
+          break;
+        case 'ticket':
+        case 'confirmation_number':
+          iconData = Icons.confirmation_number;
+          break;
+        default:
+          iconData = Icons.receipt;
+      }
     }
 
     return Container(
@@ -588,7 +778,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       // 验证并保存支出
                       if (_amountController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -597,34 +787,45 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                         return;
                       }
 
-                      // 创建新支出
-                      final newExpense = Expense(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        title: _noteController.text.isEmpty
-                            ? '$_selectedCategory消费'
-                            : _noteController.text,
-                        amount: double.parse(_amountController.text),
-                        date: DateTime.now(),
-                        category: _selectedCategory,
-                        icon: _getCategoryIcon(_selectedCategory),
-                      );
+                      try {
+                        // 获取与所选类别名称匹配的类别ID
+                        String categoryId = '';
+                        for (var category in _categories) {
+                          if (category.name == _selectedCategory) {
+                            categoryId = category.id;
+                            break;
+                          }
+                        }
+                        
+                        if (categoryId.isEmpty && _categories.isNotEmpty) {
+                          // 如果没找到匹配的类别，使用第一个类别
+                          categoryId = _categories.first.id;
+                        }
 
-                      // 添加到支出列表并更新总支出
-                      setState(() {
-                        _expenses.insert(0, newExpense);
-                        _tripBudget = TripBudget(
-                          totalExpense:
-                              _tripBudget.totalExpense + newExpense.amount,
-                          budget: _tripBudget.budget,
-                          remaining: _tripBudget.budget -
-                              (_tripBudget.totalExpense + newExpense.amount),
+                        // 使用 ExpenseService 创建新支出
+                        final newExpense = await _expenseService.createExpense(
+                          tripId: widget.trip.id,
+                          title: _noteController.text.isEmpty
+                              ? '$_selectedCategory消费'
+                              : _noteController.text,
+                          amount: double.parse(_amountController.text),
+                          date: DateTime.now(),
+                          categoryId: categoryId,
                         );
-                      });
 
-                      Navigator.pop(context);
-
-                      // 刷新页面显示
-                      this.setState(() {});
+                        // 刷新预算和支出列表
+                        await _loadExpenseData();
+                        
+                        Navigator.pop(context);
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('支出已添加')),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('添加支出失败: $e')),
+                        );
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF3B82F6),

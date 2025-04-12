@@ -1,23 +1,23 @@
 import 'package:intl/intl.dart';
 
-class JournalEntry {
+class ScheduleItem {
   final String id;
   final String tripId;
   final DateTime date;
-  final String time;
-  final String content;
-  final List<String> images;
-  final String? location;
+  final String location;
+  final String? imageUrl;
+  final String? description;
   final DateTime createdAt;
+  final List<String> images; // 用于存储多张图片
 
-  JournalEntry({
+  ScheduleItem({
     required this.id,
     required this.tripId,
     required this.date,
-    required this.time,
-    required this.content,
+    required this.location,
+    this.imageUrl,
+    this.description,
     required this.images,
-    this.location,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -27,16 +27,16 @@ class JournalEntry {
     return formatter.format(date);
   }
 
-  /// 从 JSON 数据创建 JournalEntry
-  factory JournalEntry.fromJson(Map<String, dynamic> json, {List<String>? imageUrls}) {
-    return JournalEntry(
+  /// 从 JSON 数据创建 ScheduleItem
+  factory ScheduleItem.fromJson(Map<String, dynamic> json, {List<String>? imageUrls}) {
+    return ScheduleItem(
       id: json['id'],
       tripId: json['trip_id'],
       date: DateTime.parse(json['date']),
-      time: json['time'],
-      content: json['content'],
-      images: imageUrls ?? [],
       location: json['location'],
+      imageUrl: json['image_url'],
+      description: json['description'],
+      images: imageUrls ?? [],
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
@@ -49,31 +49,31 @@ class JournalEntry {
       'id': id,
       'trip_id': tripId,
       'date': date.toIso8601String().split('T').first,
-      'time': time,
-      'content': content,
       'location': location,
+      'image_url': imageUrl,
+      'description': description,
     };
   }
 
   /// 创建拷贝并更新某些字段
-  JournalEntry copyWith({
+  ScheduleItem copyWith({
     String? id,
     String? tripId,
     DateTime? date,
-    String? time,
-    String? content,
-    List<String>? images,
     String? location,
+    String? imageUrl,
+    String? description,
+    List<String>? images,
     DateTime? createdAt,
   }) {
-    return JournalEntry(
+    return ScheduleItem(
       id: id ?? this.id,
       tripId: tripId ?? this.tripId,
       date: date ?? this.date,
-      time: time ?? this.time,
-      content: content ?? this.content,
-      images: images ?? this.images,
       location: location ?? this.location,
+      imageUrl: imageUrl ?? this.imageUrl,
+      description: description ?? this.description,
+      images: images ?? this.images,
       createdAt: createdAt ?? this.createdAt,
     );
   }

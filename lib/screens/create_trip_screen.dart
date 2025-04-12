@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_application_memotrip/models/trip.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_application_memotrip/services/trip_service.dart';
 
 class CreateTripScreen extends StatefulWidget {
   const CreateTripScreen({super.key});
@@ -12,6 +13,8 @@ class CreateTripScreen extends StatefulWidget {
 }
 
 class _CreateTripScreenState extends State<CreateTripScreen> {
+  final TripService _tripService = TripService();
+  bool _isCreating = false;
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
@@ -315,22 +318,46 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: ElevatedButton(
-                onPressed: _createTrip,
+                onPressed: _isCreating ? null : _createTrip,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6),
                   minimumSize: const Size(double.infinity, 56),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  disabledBackgroundColor: Colors.grey[400],
                 ),
-                child: const Text(
-                  '创建旅程',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
+                child: _isCreating
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            '创建中...',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Text(
+                        '创建旅程',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -390,7 +417,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
   }
 
   // 创建旅程
-  void _createTrip() {
+  Future<void> _createTrip() async {
     // 验证输入
     if (_destinationController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -406,22 +433,49 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
       return;
     }
 
-    // 格式化日期范围
-    final dateRange =
-        '${DateFormat('yyyy.MM.dd').format(_startDate!)} - ${DateFormat('yyyy.MM.dd').format(_endDate!)}';
+    // 设置加载状态
+    setState(() {
+      _isCreating = true;
+    });
 
-    // 创建新旅程
-    final newTrip = Trip(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      destination: _destinationController.text,
-      date: dateRange,
-      imageUrl: _coverImage?.path ??
-          'assets/images/default_trip_cover.jpg', // 实际应用中应当保存图片路径
-      budget: _budgetController.text.isNotEmpty ? _budgetController.text : null,
-      note: _noteController.text.isNotEmpty ? _noteController.text : null,
-    );
+    try {
+      // 将预算字符串转换为 double
+      double? budget;
+      if (_budgetController.text.isNotEmpty) {
+        budget = double.tryParse(_budgetController.text);
+        if (budget == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('预算必须是有效的数字')),
+          );
+          setState(() {
+            _isCreating = false;
+          });
+          return;
+        }
+      }
+      
+      // 通过 TripService 创建旅行并上传图片
+      final newTrip = await _tripService.createTrip(
+        destination: _destinationController.text,
+        startDate: _startDate!,
+        endDate: _endDate!,
+        imageFile: _coverImage,
+        budget: budget,
+        note: _noteController.text.isNotEmpty ? _noteController.text : null,
+      );
 
-    // 返回新创建的旅程
-    Navigator.pop(context, newTrip);
+      // 返回新创建的旅程
+      Navigator.pop(context, newTrip);
+    } catch (e) {
+      // 处理错误
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('创建旅程失败: $e')),
+      );
+      
+      // 重置加载状态
+      setState(() {
+        _isCreating = false;
+      });
+    }
   }
 }

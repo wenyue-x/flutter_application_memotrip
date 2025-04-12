@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_memotrip/models/journal_entry.dart';
 import 'package:flutter_application_memotrip/models/trip.dart';
+import 'package:flutter_application_memotrip/services/journal_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -19,12 +20,14 @@ class AddJournalEntryScreen extends StatefulWidget {
 }
 
 class _AddJournalEntryScreenState extends State<AddJournalEntryScreen> {
+  final JournalService _journalService = JournalService();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   final List<File> _selectedImages = [];
   final ImagePicker _picker = ImagePicker();
+  bool _isSaving = false;
 
   @override
   Widget build(BuildContext context) {
@@ -358,22 +361,46 @@ class _AddJournalEntryScreenState extends State<AddJournalEntryScreen> {
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: ElevatedButton(
-                onPressed: _saveJournalEntry,
+                onPressed: _isSaving ? null : _saveJournalEntry,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6),
                   minimumSize: const Size(double.infinity, 56),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  disabledBackgroundColor: Colors.grey[400],
                 ),
-                child: const Text(
-                  '保存记录',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
+                child: _isSaving
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            '保存中...',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Text(
+                        '保存记录',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -441,7 +468,7 @@ class _AddJournalEntryScreenState extends State<AddJournalEntryScreen> {
   }
 
   // 保存日志
-  void _saveJournalEntry() {
+  Future<void> _saveJournalEntry() async {
     // 验证输入
     if (_contentController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -450,26 +477,46 @@ class _AddJournalEntryScreenState extends State<AddJournalEntryScreen> {
       return;
     }
 
-    // 创建日期字符串
-    String day = _selectedDate.day.toString();
+    try {
+      setState(() {
+        _isSaving = true;
+      });
 
-    // 格式化时间
-    String formattedTime =
-        '${_getTimePrefix()} ${_selectedTime.hour}:${_selectedTime.minute.toString().padLeft(2, '0')}';
+      // 格式化时间 (24小时制)
+      String formattedTime = 
+          '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
-    // 创建新日志（实际应用中应保存到数据库或存储）
-    final newEntry = JournalEntry(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      date: day,
-      time: formattedTime,
-      content: _contentController.text,
-      images: [], // 实际应用中将保存图片路径
-      location:
-          _locationController.text.isNotEmpty ? _locationController.text : null,
-    );
+      // 使用JournalService创建日志
+      final newEntry = await _journalService.createJournalEntry(
+        tripId: widget.trip.id,
+        date: _selectedDate,
+        content: _contentController.text,
+        imageFiles: _selectedImages,
+        location: _locationController.text.isNotEmpty ? _locationController.text : null,
+        time: formattedTime,
+      );
 
-    // 传递新创建的日志回上一页
-    Navigator.pop(context, newEntry);
+      if (!mounted) return;
+      
+      // 操作成功提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('日志保存成功！')),
+      );
+
+      // 返回上一页并传递创建成功的信息
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      
+      setState(() {
+        _isSaving = false;
+      });
+      
+      // 错误提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败: $e')),
+      );
+    }
   }
 
   // 获取时间前缀（上午/下午）

@@ -3,6 +3,7 @@ import 'package:flutter_application_memotrip/models/trip.dart';
 import 'package:flutter_application_memotrip/screens/trip_detail_screen.dart';
 import 'package:flutter_application_memotrip/screens/create_trip_screen.dart';
 import 'package:flutter_application_memotrip/screens/settings_screen.dart';
+import 'package:flutter_application_memotrip/services/trip_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,21 +13,36 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 示例旅行数据
-  List<Trip> trips = [
-    Trip(
-      id: '1',
-      destination: '巴黎',
-      date: '2024.03',
-      imageUrl: 'assets/images/paris.jpg',
-    ),
-    Trip(
-      id: '2',
-      destination: '东京',
-      date: '2024.02',
-      imageUrl: 'assets/images/tokyo.jpg',
-    ),
-  ];
+  final TripService _tripService = TripService();
+  List<Trip> trips = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrips();
+  }
+
+  // 加载旅行数据
+  Future<void> _loadTrips() async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      
+      final tripList = await _tripService.getTrips();
+      
+      setState(() {
+        trips = tripList;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      print('加载旅行列表失败: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         setState(() {
                           trips.add(result);
                           // 按日期排序（如果需要）
-                          trips.sort((a, b) => b.date.compareTo(a.date));
+                          trips.sort((a, b) => b.startDate.compareTo(a.startDate));
                         });
                       }
                     },
@@ -90,31 +106,70 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // 旅行卡片网格
               Expanded(
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.8, // 控制卡片高宽比
-                  ),
-                  itemCount: trips.length,
-                  itemBuilder: (context, index) {
-                    return GestureDetector(
-                      onTap: () {
-                        // 跳转到旅行详情页
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TripDetailScreen(
-                              trip: trips[index],
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : trips.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.flight_takeoff,
+                                  size: 64,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  '还没有旅行记录',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '点击 + 按钮创建您的第一次旅行',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadTrips,
+                            child: GridView.builder(
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 0.8, // 控制卡片高宽比
+                              ),
+                              itemCount: trips.length,
+                              itemBuilder: (context, index) {
+                                return GestureDetector(
+                                  onTap: () async {
+                                    // 跳转到旅行详情页
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => TripDetailScreen(
+                                          trip: trips[index],
+                                        ),
+                                      ),
+                                    );
+                                    
+                                    // 如果从详情页返回结果，刷新列表
+                                    if (result == true) {
+                                      _loadTrips();
+                                    }
+                                  },
+                                  child: buildTripCard(trips[index]),
+                                );
+                              },
                             ),
                           ),
-                        );
-                      },
-                      child: buildTripCard(trips[index]),
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -184,11 +239,46 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 背景图片
-            Image.asset(
-              trip.imageUrl,
-              fit: BoxFit.cover,
-            ),
+            // 背景图片 - 根据是否有图片URL选择网络图片或默认图片
+            trip.imageUrl != null && trip.imageUrl!.startsWith('http')
+                ? Image.network(
+                    trip.imageUrl!,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey[300],
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          size: 50,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
+                  )
+                : trip.imageUrl != null
+                    ? Image.asset(
+                        trip.imageUrl!,
+                        fit: BoxFit.cover,
+                      )
+                    : Container(
+                        color: Colors.grey[300],
+                        child: Icon(
+                          Icons.travel_explore,
+                          size: 50,
+                          color: Colors.grey[400],
+                        ),
+                      ),
 
             // 渐变遮罩
             Positioned(
@@ -228,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    trip.date,
+                    trip.formattedDate,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
                       fontSize: 12,

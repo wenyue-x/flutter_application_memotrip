@@ -4,6 +4,9 @@ import 'package:flutter_application_memotrip/models/journal_entry.dart';
 import 'package:flutter_application_memotrip/screens/trip_detail_info_screen.dart';
 import 'package:flutter_application_memotrip/screens/trip_expense_screen.dart';
 import 'package:flutter_application_memotrip/screens/add_journal_entry_screen.dart';
+import 'package:flutter_application_memotrip/services/journal_service.dart';
+import 'package:flutter_application_memotrip/services/trip_service.dart';
+import 'package:intl/intl.dart';
 
 class TripDetailScreen extends StatefulWidget {
   final Trip trip;
@@ -18,65 +21,64 @@ class TripDetailScreen extends StatefulWidget {
 }
 
 class _TripDetailScreenState extends State<TripDetailScreen> {
-  // 模拟的日志数据
-  late List<JournalEntry> _journalEntries;
+  final JournalService _journalService = JournalService();
+  final TripService _tripService = TripService();
+  
+  List<JournalEntry> _journalEntries = [];
+  bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-    // 根据不同目的地生成不同的模拟数据
-    if (widget.trip.destination == '东京') {
-      _journalEntries = _getTokyoJournalEntries();
-    } else {
-      _journalEntries = [];
+    _loadJournalEntries();
+  }
+  
+  // 加载旅行日志数据
+  Future<void> _loadJournalEntries() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+      
+      final entries = await _journalService.getJournalEntriesByTripId(widget.trip.id);
+      
+      setState(() {
+        _journalEntries = entries;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = '加载日志失败: $e';
+      });
+      print('加载日志数据失败: $e');
     }
   }
 
-  // 获取东京旅行的模拟日志数据
-  List<JournalEntry> _getTokyoJournalEntries() {
-    return [
-      JournalEntry(
-        id: '1',
-        time: '上午 9:30',
-        content: '到达成田机场，开始我的东京之旅！这是我第一次来到日本，非常激动。机场很大，但标识清晰，很容易找到出口。',
-        images: [
-          'assets/images/tokyo_airport.jpg',
-          'assets/images/tokyo_street.jpg',
-          'assets/images/tokyo_food.jpg',
-        ],
-        date: '15',
-        location: '成田国际机场',
-      ),
-      JournalEntry(
-        id: '2',
-        time: '下午 3:15',
-        content: '参观了东京塔，真的很壮观。从塔顶可以俯瞰整个东京市区，风景太美了！',
-        images: [],
-        date: '15',
-        location: '东京塔',
-      ),
-    ];
-  }
-
-  // 添加新的旅行记录
+  // 添加新的旅行日志
   Future<void> _addJournalEntry() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AddJournalEntryScreen(
-          trip: widget.trip,
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AddJournalEntryScreen(
+            trip: widget.trip,
+          ),
         ),
-      ),
-    );
+      );
 
-    // 如果返回了新的日志条目，添加到列表中
-    if (result != null && result is JournalEntry) {
-      setState(() {
-        _journalEntries.add(result);
-        // 按日期排序（如果需要）
-        _journalEntries
-            .sort((a, b) => int.parse(b.date).compareTo(int.parse(a.date)));
-      });
+      // 如果返回了新的日志条目或返回true（表示已添加），刷新日志列表
+      if (result != null && (result is JournalEntry || result == true)) {
+        _loadJournalEntries();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('操作失败: $e')),
+      );
     }
   }
 
@@ -84,15 +86,18 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              _buildJournalSection(),
-            ],
+      body: RefreshIndicator(
+        onRefresh: _loadJournalEntries,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                _buildJournalSection(),
+              ],
+            ),
           ),
         ),
       ),
@@ -209,27 +214,27 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               ),
             ),
             const SizedBox(width: 16),
-            // 标题
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${widget.trip.destination}之旅',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+              // 标题
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${widget.trip.destination}之旅',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '2024.02.15 - 2024.02.20',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[600],
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.trip.formattedDate,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             const Spacer(),
           ],
         ),
@@ -240,10 +245,69 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
   // 构建日志部分
   Widget _buildJournalSection() {
+    if (_isLoading) {
+      return const Expanded(
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_hasError) {
+      return Expanded(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadJournalEntries,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_journalEntries.isEmpty) {
       return const Expanded(
         child: Center(
-          child: Text('还没有日志记录，点击 + 添加你的第一篇日志吧！'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.note_add_outlined,
+                color: Colors.grey,
+                size: 48,
+              ),
+              SizedBox(height: 16),
+              Text(
+                '还没有日志记录',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '点击 + 添加你的第一篇日志吧！',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -273,6 +337,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         (hasImages ? 96 : 0) +
         (hasLocation ? 40 : 0);
 
+    // 从日期中提取日
+    final String day = DateFormat('dd').format(entry.date);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -289,7 +356,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 shape: BoxShape.circle,
               ),
               child: Text(
-                entry.date,
+                day,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
@@ -345,6 +412,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       scrollDirection: Axis.horizontal,
                       itemCount: entry.images.length,
                       itemBuilder: (context, index) {
+                        final String imageUrl = entry.images[index];
                         return Container(
                           width: 80,
                           height: 80,
@@ -352,10 +420,38 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                               right: index != entry.images.length - 1 ? 8 : 0),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            image: DecorationImage(
-                              image: AssetImage(entry.images[index]),
-                              fit: BoxFit.cover,
-                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: imageUrl.startsWith('http')
+                                ? Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          value: loadingProgress.expectedTotalBytes != null
+                                              ? loadingProgress.cumulativeBytesLoaded /
+                                                  loadingProgress.expectedTotalBytes!
+                                              : null,
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: Colors.grey[300],
+                                        child: const Icon(
+                                          Icons.broken_image,
+                                          color: Colors.white,
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : Image.asset(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                  ),
                           ),
                         );
                       },

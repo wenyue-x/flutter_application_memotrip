@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter_application_memotrip/services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -9,21 +10,20 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _verificationCodeController =
-      TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _nicknameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
 
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _agreeToTerms = false;
-
-  // 倒计时逻辑
-  int _countdownSeconds = 0;
-  bool get _isCountingDown => _countdownSeconds > 0;
+  bool _isLoading = false;
+  bool _otpSent = false;
+  
+  final AuthService _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -77,59 +77,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 const SizedBox(height: 32),
 
-                // 手机号输入框
+                // 邮箱输入框
                 _buildInputField(
-                  controller: _phoneController,
-                  hintText: '手机号',
-                  keyboardType: TextInputType.phone,
-                ),
-
-                const SizedBox(height: 16),
-
-                // 验证码输入框和按钮
-                Row(
-                  children: [
-                    // 验证码输入框
-                    Expanded(
-                      flex: 2,
-                      child: _buildInputField(
-                        controller: _verificationCodeController,
-                        hintText: '验证码',
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-
-                    const SizedBox(width: 16),
-
-                    // 获取验证码按钮
-                    Expanded(
-                      flex: 1,
-                      child: SizedBox(
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed:
-                              _isCountingDown ? null : _getVerificationCode,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFF9FAFB),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            elevation: 0,
-                            disabledBackgroundColor: const Color(0xFFF9FAFB),
-                          ),
-                          child: Text(
-                            _isCountingDown ? '$_countdownSeconds秒' : '获取验证码',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: _isCountingDown
-                                  ? const Color(0xFF9CA3AF)
-                                  : const Color(0xFF3B82F6),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  controller: _emailController,
+                  hintText: '邮箱',
+                  keyboardType: TextInputType.emailAddress,
                 ),
 
                 const SizedBox(height: 16),
@@ -249,12 +201,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 const SizedBox(height: 24),
 
+                // OTP输入框（仅当OTP已发送时显示）
+                if (_otpSent) ...[
+                  const SizedBox(height: 16),
+                  
+                  // OTP输入框
+                  _buildInputField(
+                    controller: _otpController,
+                    hintText: '验证码',
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
+
+                const SizedBox(height: 24),
+
                 // 注册按钮
                 SizedBox(
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: _register,
+                    onPressed: _isLoading ? null : _register,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF3B82F6),
                       shape: RoundedRectangleBorder(
@@ -262,14 +228,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text(
-                      '注册',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
-                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.0,
+                            ),
+                          )
+                        : Text(
+                            _otpSent ? '验证并完成注册' : '获取验证码',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
 
@@ -314,47 +289,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // 获取验证码
-  void _getVerificationCode() {
-    // 验证手机号
-    if (_phoneController.text.isEmpty) {
-      _showMessage('请输入手机号');
-      return;
-    }
-
-    // 模拟发送验证码
-    setState(() {
-      _countdownSeconds = 60;
-    });
-
-    // 启动倒计时
-    _startCountdown();
-
-    _showMessage('验证码已发送');
-  }
-
-  // 倒计时
-  void _startCountdown() {
-    Future.delayed(const Duration(seconds: 1), () {
-      if (_countdownSeconds > 0) {
-        setState(() {
-          _countdownSeconds--;
-        });
-        _startCountdown();
-      }
-    });
-  }
 
   // 注册
-  void _register() {
+  Future<void> _register() async {
+    if (!_otpSent) {
+      // 第一步：发送OTP
+      await _sendOTP();
+    } else {
+      // 第二步：验证OTP并完成注册
+      await _verifyOTPAndRegister();
+    }
+  }
+
+  // 发送OTP
+  Future<void> _sendOTP() async {
     // 验证输入
-    if (_phoneController.text.isEmpty) {
-      _showMessage('请输入手机号');
+    if (_emailController.text.isEmpty) {
+      _showMessage('请输入邮箱');
       return;
     }
 
-    if (_verificationCodeController.text.isEmpty) {
-      _showMessage('请输入验证码');
+    // 邮箱格式验证
+    final emailRegExp = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegExp.hasMatch(_emailController.text)) {
+      _showMessage('请输入有效的邮箱地址');
       return;
     }
 
@@ -383,11 +341,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // 模拟注册成功
-    _showMessage('注册成功');
+    setState(() {
+      _isLoading = true;
+    });
 
-    // 回到登录页面
-    Navigator.pop(context);
+    try {
+      await _authService.signInWithOTP(
+        email: _emailController.text.trim(),
+      );
+      
+      setState(() {
+        _otpSent = true;
+      });
+      
+      _showMessage('验证码已发送至您的邮箱');
+    } catch (e) {
+      _showMessage('发送验证码失败：${e.toString()}');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // 验证OTP并完成注册
+  Future<void> _verifyOTPAndRegister() async {
+    if (_otpController.text.isEmpty) {
+      _showMessage('请输入验证码');
+      return;
+    }
+    
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final response = await _authService.verifyOTPAndSignUp(
+        email: _emailController.text.trim(),
+        token: _otpController.text.trim(),
+        password: _passwordController.text,
+        username: _nicknameController.text.trim(),
+      );
+      
+      if (response.user != null) {
+        _showMessage('注册成功');
+        Navigator.pop(context); // 回到登录页面
+      } else {
+        _showMessage('注册失败，请稍后重试');
+      }
+    } catch (e) {
+      _showMessage('注册失败：${e.toString()}');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   // 显示消息

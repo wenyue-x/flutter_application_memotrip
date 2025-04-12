@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_memotrip/models/trip.dart';
 import 'package:flutter_application_memotrip/models/expense_statistics.dart';
+import 'package:flutter_application_memotrip/services/expense_service.dart';
 import 'dart:math' as math;
 
 class ExpenseStatisticsScreen extends StatefulWidget {
@@ -17,42 +18,96 @@ class ExpenseStatisticsScreen extends StatefulWidget {
 }
 
 class _ExpenseStatisticsScreenState extends State<ExpenseStatisticsScreen> {
-  late ExpenseStatistics _statistics;
+  final ExpenseService _expenseService = ExpenseService();
+  ExpenseStatistics? _statistics;
+  bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-
-    // 初始化消费统计数据
-    _statistics = ExpenseStatistics(
-      totalAmount: 25630,
-      categories: [
-        ExpenseCategory(
-          id: '1',
-          name: '餐饮美食',
-          amount: 12500,
-          percentage: 48.8,
-          iconName: 'restaurant',
-          colorCode: '#3B82F6', // 蓝色
-        ),
-        ExpenseCategory(
-          id: '2',
-          name: '住宿',
-          amount: 8630,
-          percentage: 33.7,
-          iconName: 'hotel',
-          colorCode: '#A855F7', // 紫色
-        ),
-        ExpenseCategory(
-          id: '3',
-          name: '交通',
-          amount: 4500,
-          percentage: 17.5,
-          iconName: 'directions_bus',
-          colorCode: '#22C55E', // 绿色
-        ),
-      ],
-    );
+    _loadStatistics();
+  }
+  
+  // 加载统计数据
+  Future<void> _loadStatistics() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+      
+      // 获取支出统计
+      final categoryStats = await _expenseService.getExpenseStatisticsByCategory(widget.trip.id);
+      
+      // 获取总支出
+      final budget = await _expenseService.getTripBudget(widget.trip.id);
+      final totalAmount = budget.totalExpense;
+      
+      // 转换为ExpenseCategory列表
+      final List<ExpenseCategory> categories = [];
+      
+      categoryStats.forEach((name, amount) {
+        // 计算百分比
+        final percentage = totalAmount > 0 ? (amount / totalAmount * 100) : 0.0;
+        
+        // 根据类别名称设置图标和颜色
+        String iconName;
+        String colorCode;
+        
+        if (name.contains('餐') || name.contains('食')) {
+          iconName = 'restaurant';
+          colorCode = '#3B82F6'; // 蓝色
+        } else if (name.contains('住') || name.contains('宿') || name.contains('酒店')) {
+          iconName = 'hotel';
+          colorCode = '#A855F7'; // 紫色
+        } else if (name.contains('交') || name.contains('车') || name.contains('机票')) {
+          iconName = 'directions_bus';
+          colorCode = '#22C55E'; // 绿色
+        } else if (name.contains('票') || name.contains('门票')) {
+          iconName = 'confirmation_number';
+          colorCode = '#F59E0B'; // 黄色
+        } else if (name.contains('购') || name.contains('商品')) {
+          iconName = 'shopping_bag';
+          colorCode = '#EF4444'; // 红色
+        } else {
+          iconName = 'category';
+          colorCode = '#6B7280'; // 灰色
+        }
+        
+        categories.add(ExpenseCategory(
+          id: name,
+          name: name,
+          amount: amount,
+          percentage: double.parse(percentage.toStringAsFixed(1)),
+          iconName: iconName,
+          colorCode: colorCode,
+        ));
+      });
+      
+      // 按金额排序
+      categories.sort((a, b) => b.amount.compareTo(a.amount));
+      
+      if (mounted) {
+        setState(() {
+          _statistics = ExpenseStatistics(
+            totalAmount: totalAmount,
+            categories: categories,
+          );
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = '加载统计数据失败: $e';
+        });
+      }
+      print('加载统计数据失败: $e');
+    }
   }
 
   @override
@@ -98,56 +153,135 @@ class _ExpenseStatisticsScreenState extends State<ExpenseStatisticsScreen> {
               ),
             ),
 
-            // 环形图表
-            SizedBox(
-              height: 240,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // 环形图
-                  CustomPaint(
-                    size: const Size(200, 200),
-                    painter: DonutChartPainter(
-                      categories: _statistics.categories,
-                    ),
+            if (_isLoading)
+              // 加载指示器
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('加载统计数据...'),
+                    ],
                   ),
-                  // 中间的文字
-                  Column(
+                ),
+              )
+            else if (_hasError)
+              // 错误提示
+              Expanded(
+                child: Center(
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadStatistics,
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (_statistics == null || _statistics!.categories.isEmpty)
+              // 没有数据
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.bar_chart,
+                        color: Colors.grey,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
                       const Text(
-                        '总支出',
+                        '暂无支出数据',
                         style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7280),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 8),
                       Text(
-                        '¥${_statistics.totalAmount.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                        '添加一些支出记录，这里将显示统计信息',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
+              )
+            else ...[
+              // 环形图表
+              SizedBox(
+                height: 240,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // 环形图
+                    CustomPaint(
+                      size: const Size(200, 200),
+                      painter: DonutChartPainter(
+                        categories: _statistics!.categories,
+                      ),
+                    ),
+                    // 中间的文字
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '总支出',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '¥${_statistics!.totalAmount.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // 分类列表
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _statistics.categories.length,
-                itemBuilder: (context, index) {
-                  final category = _statistics.categories[index];
-                  return _buildCategoryItem(category);
-                },
+              // 分类列表
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _loadStatistics,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _statistics!.categories.length,
+                    itemBuilder: (context, index) {
+                      final category = _statistics!.categories[index];
+                      return _buildCategoryItem(category);
+                    },
+                  ),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -156,36 +290,45 @@ class _ExpenseStatisticsScreenState extends State<ExpenseStatisticsScreen> {
 
   // 构建分类项
   Widget _buildCategoryItem(ExpenseCategory category) {
-    // 根据不同类别选择不同的颜色和图标
-    Color iconBgColor;
-    Color iconColor;
+    // 解析颜色代码
+    Color colorFromHex;
+    try {
+      final colorInt = int.parse(category.colorCode.replaceAll('#', '0xff'));
+      colorFromHex = Color(colorInt);
+    } catch (e) {
+      colorFromHex = const Color(0xFF3B82F6); // 默认蓝色
+    }
+    
+    // 设置背景色为主色的淡色版本
+    final iconBgColor = colorFromHex.withOpacity(0.1);
+    final iconColor = colorFromHex;
+    final progressColor = colorFromHex;
+    
+    // 根据图标名称选择图标
     IconData iconData;
-    Color progressColor;
-
-    switch (category.name) {
-      case '餐饮美食':
-        iconBgColor = const Color(0xFFDBEAFE); // 蓝色背景
-        iconColor = const Color(0xFF3B82F6); // 蓝色图标
+    switch (category.iconName) {
+      case 'restaurant':
+      case 'food':
         iconData = Icons.restaurant;
-        progressColor = const Color(0xFF3B82F6);
         break;
-      case '住宿':
-        iconBgColor = const Color(0xFFF3E8FF); // 紫色背景
-        iconColor = const Color(0xFFA855F7); // 紫色图标
+      case 'hotel':
+      case 'lodging':
         iconData = Icons.hotel;
-        progressColor = const Color(0xFFA855F7);
         break;
-      case '交通':
-        iconBgColor = const Color(0xFFDCFCE7); // 绿色背景
-        iconColor = const Color(0xFF22C55E); // 绿色图标
+      case 'directions_bus':
+      case 'transportation':
         iconData = Icons.directions_bus;
-        progressColor = const Color(0xFF22C55E);
+        break;
+      case 'confirmation_number':
+      case 'ticket':
+        iconData = Icons.confirmation_number;
+        break;
+      case 'shopping_bag':
+      case 'shopping':
+        iconData = Icons.shopping_bag;
         break;
       default:
-        iconBgColor = const Color(0xFFDBEAFE);
-        iconColor = const Color(0xFF3B82F6);
         iconData = Icons.category;
-        progressColor = const Color(0xFF3B82F6);
     }
 
     return Container(
@@ -284,19 +427,13 @@ class DonutChartPainter extends CustomPainter {
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round;
 
-      // 根据类别设置颜色
-      switch (category.name) {
-        case '餐饮美食':
-          paint.color = const Color(0xFF3B82F6);
-          break;
-        case '住宿':
-          paint.color = const Color(0xFFA855F7);
-          break;
-        case '交通':
-          paint.color = const Color(0xFF22C55E);
-          break;
-        default:
-          paint.color = const Color(0xFF3B82F6);
+      // 从colorCode解析颜色
+      try {
+        final colorInt = int.parse(category.colorCode.replaceAll('#', '0xff'));
+        paint.color = Color(colorInt);
+      } catch (e) {
+        // 如果解析失败，使用默认蓝色
+        paint.color = const Color(0xFF3B82F6);
       }
 
       // 计算每个类别的扇区角度
