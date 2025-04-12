@@ -10,9 +10,9 @@ class StorageService {
   final _uuid = const Uuid();
   
   // 存储桶名称
-  static const String _tripBucket = 'trip_images';
-  static const String _journalBucket = 'journal_images';
-  static const String _profileBucket = 'profile_images';
+  static const String _tripBucket = 'trip';
+  static const String _journalBucket = 'journal';
+  static const String _profileBucket = 'profile';
 
   /// 上传旅行图片
   Future<String> uploadTripImage(File imageFile) async {
@@ -32,20 +32,33 @@ class StorageService {
   /// 通用上传图片方法
   Future<String> _uploadImage(File imageFile, String bucket) async {
     try {
-      // 生成唯一的文件名
-      final String fileExtension = path.extension(imageFile.path);
-      final String fileName = '${_uuid.v4()}$fileExtension';
+      // 检查用户是否已登录
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('用户未登录，无法上传图片');
+      }
+
+      // 生成唯一的文件名 - 强制使用.jpg格式
+      final String fileName = '${const Uuid().v4()}.jpg';
       
-      // 上传文件到 Supabase Storage
-      final uploadResponse = await _supabase
+      // 上传文件到 Supabase Storage (携带JWT令牌)
+       await _supabase
           .storage
           .from(bucket)
-          .upload(fileName, imageFile);
+          .upload(
+            fileName, 
+            imageFile,
+            fileOptions: const FileOptions(
+              upsert: false,
+              contentType: 'image/jpeg',
+              cacheControl: '3600',
+            ),
+          );
       
-      // 获取公共访问 URL
+      // 获取公共访问 URL 并添加优化参数
       final imageUrl = _supabase.storage.from(bucket).getPublicUrl(fileName);
       
-      return imageUrl;
+      return '$imageUrl?width=1080&quality=80';
     } catch (e) {
       debugPrint('上传图片失败: $e');
       rethrow;

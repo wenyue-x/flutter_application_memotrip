@@ -78,16 +78,16 @@ class ExpenseService {
           ? double.parse(tripData['budget'].toString())
           : 0.0;
       
-      // 计算总支出
-      final expenseData = await _supabase
+      // 获取所有支出记录并在客户端计算总支出
+      final expenses = await _supabase
           .from('expenses')
-          .select('sum(amount)')
-          .eq('trip_id', tripId)
-          .single();
+          .select('amount')
+          .eq('trip_id', tripId);
       
-      final double totalExpense = expenseData['sum'] != null
-          ? double.parse(expenseData['sum'].toString())
-          : 0.0;
+      double totalExpense = 0.0;
+      for (final expense in expenses) {
+        totalExpense += double.parse(expense['amount'].toString());
+      }
       
       // 计算剩余金额
       final double remaining = budget - totalExpense;

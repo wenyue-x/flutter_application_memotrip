@@ -90,9 +90,9 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                               : null,
                         ),
                         child: _coverImage == null
-                            ? Column(
+                            ? const Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
+                                children: [
                                   Icon(
                                     Icons.camera_alt_outlined,
                                     color: Color(0xFF9CA3AF),
@@ -328,9 +328,9 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                   disabledBackgroundColor: Colors.grey[400],
                 ),
                 child: _isCreating
-                    ? Row(
+                    ? const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           SizedBox(
                             width: 20,
                             height: 20,

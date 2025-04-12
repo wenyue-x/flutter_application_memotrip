@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_application_memotrip/models/trip.dart';
 import 'package:flutter_application_memotrip/screens/trip_detail_screen.dart';
 import 'package:flutter_application_memotrip/screens/create_trip_screen.dart';
@@ -113,13 +114,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
+                                Icon( // Can be const if color is const
                                   Icons.flight_takeoff,
                                   size: 64,
                                   color: Colors.grey[400],
                                 ),
                                 const SizedBox(height: 16),
-                                Text(
+                                Text( // Cannot be const due to TextStyle
                                   '还没有旅行记录',
                                   style: TextStyle(
                                     fontSize: 18,
@@ -127,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
+                                Text( // Cannot be const due to TextStyle
                                   '点击 + 按钮创建您的第一次旅行',
                                   style: TextStyle(
                                     fontSize: 14,
@@ -183,18 +184,18 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(30),
-            boxShadow: [
+            boxShadow: const [ // Can be const
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Color.fromRGBO(0, 0, 0, 0.1), // Use const Color
                 blurRadius: 15,
-                offset: const Offset(0, 10),
+                offset: Offset(0, 10),
               ),
             ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              Icon( // Cannot be const due to color
                 Icons.home,
                 color: Colors.blue[600],
                 size: 24,
@@ -208,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         builder: (context) => const SettingsScreen()),
                   );
                 },
-                child: Icon(
+                child: Icon( // Can be const if color is const
                   Icons.settings,
                   color: Colors.grey[400],
                   size: 24,
@@ -223,14 +224,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 构建旅行卡片的方法
   Widget buildTripCard(Trip trip) {
+    // Cannot make the root Container const because trip is variable
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [ // Can be const
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Color.fromRGBO(0, 0, 0, 0.1), // Use const Color
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -241,39 +243,31 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // 背景图片 - 根据是否有图片URL选择网络图片或默认图片
             trip.imageUrl != null && trip.imageUrl!.startsWith('http')
-                ? Image.network(
-                    trip.imageUrl!,
+                ? CachedNetworkImage(
+                    imageUrl: trip.imageUrl!,
                     fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey[300],
-                        child: const Icon(
-                          Icons.image_not_supported,
-                          size: 50,
-                          color: Colors.grey,
-                        ),
-                      );
-                    },
+                    progressIndicatorBuilder: (context, url, progress) => Center(
+                      child: CircularProgressIndicator(
+                        value: progress.progress,
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: Colors.grey[300],
+                      child: const Icon(
+                        Icons.image_not_supported,
+                        size: 50,
+                        color: Colors.grey,
+                      ),
+                    ),
                   )
                 : trip.imageUrl != null
-                    ? Image.asset(
+                    ? Image.asset( // Cannot be const due to trip.imageUrl!
                         trip.imageUrl!,
                         fit: BoxFit.cover,
                       )
-                    : Container(
+                    : Container( // Cannot be const due to color
                         color: Colors.grey[300],
-                        child: Icon(
+                        child: Icon( // Can be const if color is const
                           Icons.travel_explore,
                           size: 50,
                           color: Colors.grey[400],
@@ -285,14 +279,14 @@ class _HomeScreenState extends State<HomeScreen> {
               bottom: 0,
               left: 0,
               right: 0,
-              child: Container(
+              child: Container( // Cannot be const due to BoxDecoration
                 height: 60,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration( // Can be const
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.7),
+                    colors: [ // Can be const
+                      Color.fromRGBO(0, 0, 0, 0.7), // Use const Color
                       Colors.transparent,
                     ],
                   ),
@@ -308,20 +302,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  Text( // Cannot be const due to trip.destination
                     trip.destination,
-                    style: const TextStyle(
+                    style: const TextStyle( // Style can be const
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
+                  Text( // Cannot be const due to trip.formattedDate and style
                     trip.formattedDate,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 12,
+                    style: const TextStyle( // Cannot be const due to withOpacity
                     ),
                   ),
                 ],

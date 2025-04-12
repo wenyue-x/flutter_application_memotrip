@@ -813,10 +813,11 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                           categoryId: categoryId,
                         );
 
+                        // 关闭底部表单
+                        Navigator.pop(context);
+                        
                         // 刷新预算和支出列表
                         await _loadExpenseData();
-                        
-                        Navigator.pop(context);
                         
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('支出已添加')),

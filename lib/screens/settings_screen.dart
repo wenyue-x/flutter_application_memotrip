@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_memotrip/screens/edit_profile_screen.dart'; // 导入编辑资料页面
+import 'package:flutter_application_memotrip/screens/login_screen.dart'; // 导入登录页面
+import 'package:flutter_application_memotrip/services/auth_service.dart'; // 导入认证服务
+import 'package:supabase_flutter/supabase_flutter.dart'; // 导入 Supabase
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,7 +12,68 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final AuthService _authService = AuthService();
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   bool _iCloudSyncEnabled = true;
+  bool _isLoading = true;
+  String? _username;
+  String? _email;
+  int? _tripCount; // 添加状态变量存储旅程数量
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final userId = _authService.currentUserId;
+      if (userId != null) {
+        final data = await _supabase
+            .from('users')
+            .select('username, email')
+            .eq('id', userId)
+            .single(); // 使用 single() 获取单条记录
+
+        // 查询旅程数量 (修正语法)
+        final tripCount = await _supabase
+            .from('trips')
+            .count(CountOption.exact) // 使用 .count() 方法
+            .eq('user_id', userId);
+
+        if (mounted) {
+          setState(() {
+            _username = data['username'] as String?;
+            _email = data['email'] as String?; // 保留邮箱，以备后用或调试
+            _tripCount = tripCount; // 更新旅程数量
+            _isLoading = false;
+          });
+        }
+      } else {
+         if (mounted) {
+          setState(() {
+            _isLoading = false; // 用户未登录
+          });
+         }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载用户信息失败: $e')),
+        );
+      }
+      debugPrint('加载用户信息错误: $e');
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -34,57 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 24),
 
               // 用户信息
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    // 用户头像
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: Colors.blue[100],
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.person,
-                          size: 40,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // 用户名和记录数
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'Sarah Chen',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1F2937),
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '日记数 12 段旅程',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF6B7280),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              _buildUserInfoSection(), // 提取为单独的方法
 
               const SizedBox(height: 24),
 
@@ -219,6 +234,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // 构建用户信息部分
+  Widget _buildUserInfoSection() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // 用户头像 (保持不变)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.person,
+                size: 40,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // 用户名和邮箱/记录数
+          Expanded( // 使用 Expanded 避免溢出
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _username ?? '用户名加载失败', // 显示获取到的用户名
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1F2937),
+                  ),
+                  overflow: TextOverflow.ellipsis, // 处理长用户名
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  // 显示旅程数量
+                  _tripCount != null ? '$_tripCount 段旅程' : '旅程数量加载中...',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF6B7280),
+                  ),
+                   overflow: TextOverflow.ellipsis, // 处理长邮箱
+                ),
+              ],
+            ),
+          ),
+          // 添加编辑按钮
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Color(0xFF9CA3AF)),
+            onPressed: () {
+              // 导航到编辑页面 (稍后实现)
+              _navigateToEditProfile();
+            },
+            tooltip: '编辑资料', // 添加提示
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 导航到编辑资料页面
+  Future<void> _navigateToEditProfile() async { // 改为 async
+    // 导航到编辑页面，并等待返回结果
+    final result = await Navigator.push<bool>( // 指定返回类型为 bool
+      context,
+      MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+    );
+
+    // 如果从编辑页面返回的结果是 true (表示保存成功)
+    if (result == true && mounted) {
+      // 重新加载用户信息以刷新显示
+      _loadUserProfile();
+    }
+  }
+
+
   // 构建设置项
   Widget _buildSettingItem({
     required IconData icon,
@@ -303,10 +407,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('取消'),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // 执行退出登录操作
-                Navigator.of(context).pop(); // 返回上一页
+              onPressed: () async {
+                // 在 pop 之前捕获 NavigatorState
+                final navigator = Navigator.of(context);
+                // 捕获 ScaffoldMessengerState 以便在正确的 context 显示 SnackBar
+                final scaffoldMessenger = ScaffoldMessenger.of(this.context);
+
+                navigator.pop(); // 关闭对话框
+
+                try {
+                  final authService = AuthService();
+                  await authService.signOut();
+                  // 退出成功后，跳转到登录页并移除所有历史路由
+                  // 使用捕获的 navigator 进行操作
+                  if (mounted) { // 检查 widget 是否还在树中
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      (Route<dynamic> route) => false, // 移除所有路由
+                    );
+                  }
+                } catch (e) {
+                  // 处理退出登录错误
+                  // 使用捕获的 scaffoldMessenger 显示 SnackBar
+                  if (mounted) {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(content: Text('退出登录失败: $e')),
+                    );
+                  }
+                  debugPrint('退出登录错误: $e');
+                }
               },
               child: const Text('确认'),
             ),

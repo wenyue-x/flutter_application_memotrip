@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_memotrip/models/trip.dart';
-import 'package:flutter_application_memotrip/models/trip_detail.dart';
 import 'package:flutter_application_memotrip/models/expense.dart';
 import 'package:flutter_application_memotrip/services/expense_service.dart';
-import 'package:flutter_application_memotrip/services/trip_service.dart';
-import 'package:flutter_application_memotrip/services/journal_service.dart';
-import 'package:intl/intl.dart';
 
 class TripDetailInfoScreen extends StatefulWidget {
   final Trip trip;
@@ -20,9 +16,7 @@ class TripDetailInfoScreen extends StatefulWidget {
 }
 
 class _TripDetailInfoScreenState extends State<TripDetailInfoScreen> {
-  final TripService _tripService = TripService();
   final ExpenseService _expenseService = ExpenseService();
-  final JournalService _journalService = JournalService();
   
   TripBudget? _budget;
   List<String> _photoGallery = [];
@@ -30,6 +24,8 @@ class _TripDetailInfoScreenState extends State<TripDetailInfoScreen> {
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
+  bool _showAllPhotos = false;
+  static const int _photoLimit = 4;
 
   @override
   void initState() {
@@ -51,14 +47,8 @@ class _TripDetailInfoScreenState extends State<TripDetailInfoScreen> {
       // 加载预算信息
       final budget = await _expenseService.getTripBudget(widget.trip.id);
       
-      // TODO: 这里可以加载旅行相关的照片
-      // 临时使用示例图片
-      _photoGallery = [
-        'assets/images/tokyo_photo1.jpg',
-        'assets/images/tokyo_photo2.jpg',
-        'assets/images/tokyo_photo3.jpg',
-        'assets/images/tokyo_photo4.jpg',
-      ];
+      // 照片墙初始为空列表，后续可从服务端加载真实照片
+      _photoGallery = [];
       
       setState(() {
         _budget = budget;
@@ -119,115 +109,139 @@ class _TripDetailInfoScreenState extends State<TripDetailInfoScreen> {
               ),
 
               // 主图部分
-              Stack(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 16.0),
-                    height: 200,
-                    width: double.infinity,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: widget.trip.imageUrl != null && widget.trip.imageUrl!.startsWith('http')
-                        ? Image.network(
-                            widget.trip.imageUrl!,
-                            fit: BoxFit.cover,
-                            alignment: const Alignment(0, -0.3),
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Center(
-                                child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes != null
-                                      ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
-                                      : null,
-                                ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[300],
-                                child: const Center(
+              Container(
+                margin: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 16.0),
+                height: 200, // 增加高度解决溢出问题
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.grey[300],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // 图片部分
+                      Builder(
+                        builder: (context) {
+                          // 没有图片URL时显示默认图标
+                          if (widget.trip.imageUrl == null) {
+                            return const Center(
+                              child: Icon(
+                                Icons.travel_explore,
+                                color: Colors.white,
+                                size: 50,
+                              ),
+                            );
+                          }
+                          
+                          // 网络图片
+                          if (widget.trip.imageUrl!.startsWith('http')) {
+                            return Image.network(
+                              widget.trip.imageUrl!,
+                              fit: BoxFit.cover,
+                              alignment: const Alignment(0, -0.3),
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                print('图片加载错误: $error');
+                                return const Center(
                                   child: Icon(
                                     Icons.image_not_supported,
                                     color: Colors.white,
                                     size: 50,
                                   ),
+                                );
+                              },
+                            );
+                          }
+                          // 本地资源图片
+                          try {
+                            return Image.asset(
+                              widget.trip.imageUrl!,
+                              fit: BoxFit.cover,
+                              alignment: const Alignment(0, -0.3),
+                              errorBuilder: (context, error, stackTrace) {
+                                print('本地图片加载错误: $error');
+                                return const Center(
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.white,
+                                    size: 50,
+                                  ),
+                                );
+                              },
+                            );
+                          } catch (e) {
+                            print('加载图片异常: $e');
+                            return const Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.white,
+                                size: 50,
+                              ),
+                            );
+                          }
+                        }
+                      ),
+                      // 渐变效果和文字覆盖
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          height: 70, // 增加高度以适应更多文字
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.7),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${widget.trip.destination}之旅',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
-                              );
-                            },
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              image: widget.trip.imageUrl != null
-                                  ? DecorationImage(
-                                      image: AssetImage(widget.trip.imageUrl!),
-                                      fit: BoxFit.cover,
-                                      alignment: const Alignment(0, -0.3),
-                                    )
-                                  : null,
-                            ),
-                            child: widget.trip.imageUrl == null
-                                ? const Center(
-                                    child: Icon(
-                                      Icons.travel_explore,
-                                      color: Colors.white,
-                                      size: 50,
-                                    ),
-                                  )
-                                : null,
+                                overflow: TextOverflow.ellipsis, // 添加溢出处理
+                                maxLines: 1, // 限制为一行
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.trip.formattedDate,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
                           ),
-                  ),
-                  // 渐变效果和文字覆盖
-                  Positioned(
-                    bottom: 16.0,
-                    left: 16.0,
-                    right: 16.0,
-                    child: Container(
-                      height: 80,
-                      decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.7),
-                            Colors.transparent,
-                          ],
                         ),
                       ),
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${widget.trip.destination}之旅',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.trip.formattedDate,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
 
               if (_isLoading)
@@ -442,54 +456,107 @@ class _TripDetailInfoScreenState extends State<TripDetailInfoScreen> {
               if (!_isLoading && !_hasError && _photoGallery.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 1,
-                    ),
-                    itemCount: _photoGallery.length,
-                    itemBuilder: (context, index) {
-                      final photoUrl = _photoGallery[index];
-                      
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: photoUrl.startsWith('http')
-                            ? Image.network(
-                                photoUrl,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Center(
-                                    child: CircularProgressIndicator(
-                                      value: loadingProgress.expectedTotalBytes != null
-                                          ? loadingProgress.cumulativeBytesLoaded /
-                                              loadingProgress.expectedTotalBytes!
-                                          : null,
+                  child: Column(
+                    children: [
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 1,
+                        ),
+                        itemCount: _showAllPhotos ? _photoGallery.length : _photoLimit,
+                        itemBuilder: (context, index) {
+                          final photoUrl = _photoGallery[index];
+                          return GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => FullScreenImageDialog(
+                                  imageUrl: photoUrl,
+                                  index: index,
+                                  totalPhotos: _photoGallery.length,
+                                ),
+                              );
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: photoUrl.startsWith('http')
+                                  ? Image.network(
+                                      photoUrl,
+                                      fit: BoxFit.cover,
+                                      loadingBuilder: (context, child, loadingProgress) {
+                                        if (loadingProgress == null) return child;
+                                        return Center(
+                                          child: CircularProgressIndicator(
+                                            value: loadingProgress.expectedTotalBytes != null
+                                                ? loadingProgress.cumulativeBytesLoaded /
+                                                    loadingProgress.expectedTotalBytes!
+                                                : null,
+                                          ),
+                                        );
+                                      },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          color: Colors.grey[300],
+                                          child: const Center(
+                                            child: Icon(
+                                              Icons.broken_image,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    )
+                                  : Image.asset(
+                                      photoUrl,
+                                      fit: BoxFit.cover,
                                     ),
-                                  );
-                                },
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    color: Colors.grey[300],
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              )
-                            : Image.asset(
-                                photoUrl,
-                                fit: BoxFit.cover,
+                            ),
+                          );
+                        },
+                      ),
+                      if (_photoGallery.length > _photoLimit && !_showAllPhotos)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16.0),
+                          child: InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => PhotoGalleryDialog(photos: _photoGallery),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 24.0),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3B82F6),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                      );
-                    },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.photo_library,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '查看全部 ${_photoGallery.length} 张照片',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
 
@@ -616,6 +683,217 @@ class _TripDetailInfoScreenState extends State<TripDetailInfoScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class PhotoGalleryDialog extends StatelessWidget {
+  final List<String> photos;
+
+  const PhotoGalleryDialog({
+    super.key,
+    required this.photos,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: double.maxFinite,
+        height: MediaQuery.of(context).size.height * 0.8,
+        margin: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '照片墙 (${photos.length})',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1,
+                ),
+                itemCount: photos.length,
+                itemBuilder: (context, index) {
+                  final photoUrl = photos[index];
+                  return GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => FullScreenImageDialog(
+                          imageUrl: photoUrl,
+                          index: index,
+                          totalPhotos: photos.length,
+                        ),
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: photoUrl.startsWith('http')
+                        ? Image.network(
+                            photoUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey[300],
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                        : Image.asset(
+                            photoUrl,
+                            fit: BoxFit.cover,
+                          ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FullScreenImageDialog extends StatelessWidget {
+  final String imageUrl;
+  final int index;
+  final int totalPhotos;
+
+  const FullScreenImageDialog({
+    super.key,
+    required this.imageUrl,
+    required this.index,
+    required this.totalPhotos,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.zero,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 图片
+          InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 3.0,
+            child: imageUrl.startsWith('http')
+                ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey[300],
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : Image.asset(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                  ),
+          ),
+          // 顶部操作栏
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 48, 16, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${index + 1} / $totalPhotos',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
